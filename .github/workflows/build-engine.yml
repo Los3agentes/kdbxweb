@@ -17,7 +17,7 @@ jobs:
       - name: Install build tools and forked dependencies
         run: |
           npm install --ignore-scripts --no-package-lock
-          npm install --ignore-scripts --no-package-lock --no-save fflate@0.8.3 @xmldom/xmldom@0.9.12
+          npm install --ignore-scripts --no-package-lock --save fflate@github:Los3agentes/fflate @xmldom/xmldom@github:Los3agentes/xmldom
       - name: Enable transpile-only for legacy TypeScript compatibility
         run: |
           python3 - <<'PY'
