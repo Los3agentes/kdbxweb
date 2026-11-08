@@ -1,0 +1,63 @@
+name: Build self-contained GASPAR KDBX Obsidian plugin
+
+on:
+  push:
+    paths:
+      - 'obsidian-plugin/**'
+      - '.github/workflows/build-obsidian-plugin.yml'
+      - 'lib/**'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build-and-test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Install build dependencies
+        run: |
+          npm install --no-save --legacy-peer-deps --ignore-scripts --no-package-lock \
+            esbuild@0.25.12 hash-wasm@4.12.0 obsidian@1.8.10 \
+            fflate@github:Los3agentes/fflate \
+            @xmldom/xmldom@github:Los3agentes/xmldom
+      - name: Bundle all runtime dependencies
+        run: |
+          mkdir -p obsidian-plugin/dist
+          ./node_modules/.bin/esbuild obsidian-plugin/src/main.ts \
+            --bundle --platform=node --format=cjs --target=es2022 \
+            --external:obsidian --outfile=obsidian-plugin/dist/main.js \
+            --log-level=info
+      - name: Package Obsidian plugin
+        run: |
+          cp obsidian-plugin/manifest.json obsidian-plugin/dist/manifest.json
+          cp obsidian-plugin/styles.css obsidian-plugin/dist/styles.css
+          cd obsidian-plugin/dist
+          zip -9 ../gaspar-kdbx-explorer.zip main.js manifest.json styles.css
+      - name: Verify standalone package
+        run: |
+          test -s obsidian-plugin/dist/main.js
+          test -s obsidian-plugin/gaspar-kdbx-explorer.zip
+          node --check obsidian-plugin/dist/main.js
+          node - <<'JS'
+          const fs = require('fs');
+          const s = fs.readFileSync('obsidian-plugin/dist/main.js','utf8');
+          if (!s.includes('argon2id') || !s.includes('GASPAR_MARKDOWN')) throw new Error('Missing Argon2 or editor');
+          if (/require\(["'](?:kdbxweb|fflate|@xmldom\/xmldom|hash-wasm)["']\)/.test(s)) throw new Error('Unbundled runtime dependency');
+          console.log('Self-contained static checks passed', fs.statSync('obsidian-plugin/dist/main.js').size, 'bytes');
+          JS
+      - uses: actions/upload-artifact@v4
+        with:
+          name: gaspar-kdbx-explorer-selfcontained
+          path: |
+            obsidian-plugin/dist/main.js
+            obsidian-plugin/dist/manifest.json
+            obsidian-plugin/dist/styles.css
+            obsidian-plugin/gaspar-kdbx-explorer.zip
+          if-no-files-found: error
+          retention-days: 30
