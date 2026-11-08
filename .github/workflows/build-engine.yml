@@ -1,0 +1,32 @@
+name: Build KdbxWeb engine from forks
+on:
+  push:
+    paths:
+      - '.github/workflows/build-engine.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Install forked runtime dependencies and build tools
+        run: |
+          npm install --no-save --ignore-scripts
+          npm install --no-save --ignore-scripts --no-package-lock \
+            fflate@github:Los3agentes/fflate \
+            @xmldom/xmldom@github:Los3agentes/xmldom
+      - name: Build browser distribution
+        run: npm run pack:dist-prod
+      - name: Verify distribution
+        run: |
+          test -s dist/kdbxweb.js
+          ls -lh dist/kdbxweb.js
+      - uses: actions/upload-artifact@v4
+        with:
+          name: kdbxweb-engine
+          path: dist/kdbxweb.js
