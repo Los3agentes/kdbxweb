@@ -31,7 +31,7 @@ class KdbxView extends ItemView {
     try { const bytes = await this.db.save(); await this.app.vault.modifyBinary(this.file, bytes); this.dirty = false; new Notice('Encrypted KDBX saved'); }
     catch (e) { new Notice('Save failed: ' + String(e)); }
   }
-  private async open(file: TFile, password: string) {
+  async open(file: TFile, password: string) {
     try {
       const bytes = await this.app.vault.readBinary(file);
       const credentials = new KDBX.Credentials(KDBX.ProtectedValue.fromString(password));
@@ -45,6 +45,7 @@ class KdbxView extends ItemView {
     }
     m.open();
   }
+  selectEntry(entry: any) { this.selected = entry; this.render(); }
   private render() {
     this.contentEl.empty(); this.contentEl.addClass('gaspar-kdbx');
     const bar = this.contentEl.createDiv({ cls: 'gaspar-toolbar' });
@@ -68,11 +69,93 @@ class KdbxView extends ItemView {
       for (const child of g.groups) show(child, depth + 1);
     };
     show(this.db.getDefaultGroup(), 0);
+    if (this.selected) {
+      editor.empty(); const area = editor.createEl('textarea');
+      area.value = String(this.selected.fields.get('GASPAR_MARKDOWN') || '');
+      area.oninput = () => { this.selected.fields.set('GASPAR_MARKDOWN', area.value); this.dirty = true; };
+    }
   }
 }
 export default class GasparKdbxPlugin extends Plugin {
+  private unlocked = new Map<string, any>();
+  private observer: MutationObserver | null = null;
+  private syncing = false;
+  private async unlock(file: TFile): Promise<any | null> {
+    const cached = this.unlocked.get(file.path);
+    if (cached) return cached;
+    return new Promise(resolve => {
+      new PasswordDialog(this.app, async password => {
+        if (password === null) { resolve(null); return; }
+        try {
+          const bytes = await this.app.vault.readBinary(file);
+          const credentials = new KDBX.Credentials(KDBX.ProtectedValue.fromString(password));
+          const db = await KDBX.Kdbx.load(bytes, credentials);
+          this.unlocked.set(file.path, db); resolve(db);
+        } catch (e) { new Notice('KDBX unlock failed: ' + String(e)); resolve(null); }
+      }).open();
+    });
+  }
+  private renderGroup(parent: HTMLElement, group: any, file: TFile, depth = 0) {
+    const row = parent.createDiv({ cls: 'gaspar-virtual-row gaspar-virtual-group' });
+    row.style.paddingLeft = (depth * 16 + 12) + 'px';
+    row.setText('▸ 📁 ' + String(group.name || 'Group'));
+    const children = parent.createDiv({ cls: 'gaspar-virtual-children' });
+    children.style.display = 'none';
+    row.onclick = ev => { ev.stopPropagation(); children.style.display = children.style.display === 'none' ? 'block' : 'none'; row.setText((children.style.display === 'none' ? '▸ ' : '▾ ') + '📁 ' + String(group.name || 'Group')); };
+    for (const child of group.groups) this.renderGroup(children, child, file, depth + 1);
+    for (const entry of group.entries) {
+      const item = children.createDiv({ cls: 'gaspar-virtual-row gaspar-virtual-entry' });
+      item.style.paddingLeft = ((depth + 1) * 16 + 12) + 'px';
+      item.setText('📄 ' + String(entry.fields.get('Title') || 'Untitled') + '.md');
+      item.onclick = async ev => {
+        ev.stopPropagation();
+        await this.open();
+        const view = this.app.workspace.getLeavesOfType(VIEW)[0]?.view as KdbxView | undefined;
+        if (view) {
+          // Open through the existing encrypted editor, not a plaintext vault file.
+          const db = this.unlocked.get(file.path);
+          if (db) { await view.open(file, await this.requestPasswordForEditor(file)); view.selectEntry(entry); }
+        }
+      };
+    }
+  }
+  private async requestPasswordForEditor(file: TFile): Promise<string> {
+    return new Promise(resolve => new PasswordDialog(this.app, p => resolve(p || '')).open());
+  }
+  private refreshExplorer() {
+    if (this.syncing) return;
+    this.syncing = true;
+    try {
+      const files = new Map(this.app.vault.getFiles().filter(f => f.extension.toLowerCase() === 'kdbx').map(f => [f.path, f]));
+      document.querySelectorAll('.workspace-leaf-content[data-type="file-explorer"] .tree-item[data-path]').forEach(el => {
+        const node = el as HTMLElement;
+        const file = files.get(node.getAttribute('data-path') || '');
+        if (!file || node.querySelector(':scope > .gaspar-kdbx-virtual')) return;
+        const container = node.createDiv({ cls: 'gaspar-kdbx-virtual' });
+        const toggle = container.createDiv({ cls: 'gaspar-virtual-row gaspar-kdbx-toggle', text: '▸ 🔒 Browse as folder' });
+        const contents = container.createDiv({ cls: 'gaspar-virtual-children' });
+        contents.style.display = 'none';
+        toggle.onclick = async ev => {
+          ev.preventDefault(); ev.stopPropagation();
+          if (contents.style.display !== 'none') { contents.style.display = 'none'; toggle.setText('▸ 🔒 Browse as folder'); return; }
+          const db = await this.unlock(file);
+          if (!db) return;
+          contents.empty();
+          this.renderGroup(contents, db.getDefaultGroup(), file);
+          contents.style.display = 'block'; toggle.setText('▾ 🔓 ' + file.name);
+        };
+      });
+    } finally { this.syncing = false; }
+  }
+
   async onload() {
     this.registerView(VIEW, leaf => new KdbxView(leaf));
+    this.app.workspace.onLayoutReady(() => {
+      this.refreshExplorer();
+      this.observer = new MutationObserver(() => this.refreshExplorer());
+      this.observer.observe(document.body, { childList: true, subtree: true });
+    });
+    this.register(() => { this.observer?.disconnect(); this.unlocked.clear(); });
     this.addRibbonIcon('lock-keyhole', 'GASPAR KDBX Explorer', () => void this.open());
     this.addCommand({ id: 'open-kdbx-explorer', name: 'Open KDBX Explorer', callback: () => void this.open() });
   }
