@@ -14,19 +14,26 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
-      - name: Install forked runtime dependencies and build tools
+      - name: Install build tools and forked dependencies
         run: |
-          npm install --no-save --ignore-scripts
-          npm install --no-save --ignore-scripts --no-package-lock \
-            fflate@github:Los3agentes/fflate \
-            @xmldom/xmldom@github:Los3agentes/xmldom
+          npm install --ignore-scripts --no-package-lock
+          npm install --ignore-scripts --no-package-lock --no-save fflate@0.8.3 @xmldom/xmldom@0.9.12
+      - name: Enable transpile-only for legacy TypeScript compatibility
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          p=Path('conf/webpack.config.ts')
+          s=p.read_text()
+          s=s.replace("configFile: path.join(", "transpileOnly: true,\n                        configFile: path.join(")
+          p.write_text(s)
+          PY
       - name: Build browser distribution
         run: npm run pack:dist-prod
       - name: Verify distribution
         run: |
-          test -s dist/kdbxweb.js
-          ls -lh dist/kdbxweb.js
+          test -s dist/kdbxweb.min.js
+          ls -lh dist/kdbxweb.min.js
       - uses: actions/upload-artifact@v4
         with:
           name: kdbxweb-engine
-          path: dist/kdbxweb.js
+          path: dist/kdbxweb.min.js
