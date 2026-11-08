@@ -93,12 +93,22 @@ export default class GasparKdbxPlugin extends Plugin {
     return new Promise(resolve => {
       new PasswordDialog(this.app, async password => {
         if (password === null) { resolve(null); return; }
+        const started = Date.now();
+        new Notice('KDBX: reading encrypted file…', 3500);
         try {
           const bytes = await this.app.vault.readBinary(file);
+          new Notice('KDBX: decrypting (may take time with high Argon2 memory)…', 6000);
           const credentials = new KDBX.Credentials(KDBX.ProtectedValue.fromString(password));
           const db = await KDBX.Kdbx.load(bytes, credentials);
-          this.unlocked.set(file.path, db); resolve(db);
-        } catch (e) { new Notice('KDBX unlock failed: ' + String(e)); resolve(null); }
+          this.unlocked.set(file.path, db);
+          new Notice('KDBX unlocked in ' + ((Date.now() - started) / 1000).toFixed(1) + 's');
+          resolve(db);
+        } catch (e) {
+          const msg = e instanceof Error ? e.message : String(e);
+          console.error('[GASPAR KDBX] Unlock error', { file: file.path, seconds: (Date.now() - started) / 1000, message: msg });
+          new Notice('KDBX unlock failed: ' + msg, 12000);
+          resolve(null);
+        }
       }).open();
     });
   }
