@@ -45,6 +45,7 @@ class KdbxView extends ItemView {
     }
     m.open();
   }
+  openLoaded(file: TFile, db: any, entry: any) { this.file = file; this.db = db; this.selected = entry; this.dirty = false; this.render(); }
   selectEntry(entry: any) { this.selected = entry; this.render(); }
   private render() {
     this.contentEl.empty(); this.contentEl.addClass('gaspar-kdbx');
@@ -114,13 +115,10 @@ export default class GasparKdbxPlugin extends Plugin {
         if (view) {
           // Open through the existing encrypted editor, not a plaintext vault file.
           const db = this.unlocked.get(file.path);
-          if (db) { await view.open(file, await this.requestPasswordForEditor(file)); view.selectEntry(entry); }
+          if (db) view.openLoaded(file, db, entry);
         }
       };
     }
-  }
-  private async requestPasswordForEditor(file: TFile): Promise<string> {
-    return new Promise(resolve => new PasswordDialog(this.app, p => resolve(p || '')).open());
   }
   private refreshExplorer() {
     if (this.syncing) return;
