@@ -81,6 +81,12 @@ export default class GasparKdbxPlugin extends Plugin {
   private unlocked = new Map<string, any>();
   private observer: MutationObserver | null = null;
   private syncing = false;
+  private refreshPending = false;
+  private scheduleRefresh() {
+    if (this.refreshPending) return;
+    this.refreshPending = true;
+    window.setTimeout(() => { this.refreshPending = false; this.refreshExplorer(); }, 250);
+  }
   private async unlock(file: TFile): Promise<any | null> {
     const cached = this.unlocked.get(file.path);
     if (cached) return cached;
@@ -168,10 +174,18 @@ export default class GasparKdbxPlugin extends Plugin {
     this.registerView(VIEW, leaf => new KdbxView(leaf));
     this.app.workspace.onLayoutReady(() => {
       this.refreshExplorer();
-      this.observer = new MutationObserver(() => this.refreshExplorer());
-      this.observer.observe(document.body, { childList: true, subtree: true });
+      const explorer = document.querySelector('.workspace-leaf-content[data-type="file-explorer"]');
+      if (explorer) {
+        this.observer = new MutationObserver(mutations => {
+          if (mutations.some(m => !((m.target as Element).closest?.('.gaspar-kdbx-root')))) this.scheduleRefresh();
+        });
+        this.observer.observe(explorer, { childList: true, subtree: true });
+      }
     });
     this.register(() => { this.observer?.disconnect(); this.unlocked.clear(); });
+    this.registerEvent(this.app.vault.on('create', () => this.scheduleRefresh()));
+    this.registerEvent(this.app.vault.on('delete', () => this.scheduleRefresh()));
+    this.registerEvent(this.app.vault.on('rename', () => this.scheduleRefresh()));
     this.addRibbonIcon('lock-keyhole', 'GASPAR KDBX Explorer', () => void this.open());
     this.addCommand({ id: 'open-kdbx-explorer', name: 'Open KDBX Explorer', callback: () => void this.open() });
   }
