@@ -1,0 +1,9 @@
+{
+  "id": "gaspar-kdbx-explorer",
+  "name": "GASPAR KDBX Explorer",
+  "version": "0.1.0",
+  "minAppVersion": "1.5.0",
+  "description": "Encrypted KeePass KDBX note explorer",
+  "author": "GASPAR",
+  "isDesktopOnly": true
+}
