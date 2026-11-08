@@ -124,24 +124,42 @@ export default class GasparKdbxPlugin extends Plugin {
     if (this.syncing) return;
     this.syncing = true;
     try {
-      const files = new Map(this.app.vault.getFiles().filter(f => f.extension.toLowerCase() === 'kdbx').map(f => [f.path, f]));
-      document.querySelectorAll('.workspace-leaf-content[data-type="file-explorer"] .tree-item[data-path]').forEach(el => {
-        const node = el as HTMLElement;
-        const file = files.get(node.getAttribute('data-path') || '');
-        if (!file || node.querySelector(':scope > .gaspar-kdbx-virtual')) return;
-        const container = node.createDiv({ cls: 'gaspar-kdbx-virtual' });
-        const toggle = container.createDiv({ cls: 'gaspar-virtual-row gaspar-kdbx-toggle', text: '▸ 🔒 Browse as folder' });
-        const contents = container.createDiv({ cls: 'gaspar-virtual-children' });
-        contents.style.display = 'none';
-        toggle.onclick = async ev => {
-          ev.preventDefault(); ev.stopPropagation();
-          if (contents.style.display !== 'none') { contents.style.display = 'none'; toggle.setText('▸ 🔒 Browse as folder'); return; }
-          const db = await this.unlock(file);
-          if (!db) return;
-          contents.empty();
-          this.renderGroup(contents, db.getDefaultGroup(), file);
-          contents.style.display = 'block'; toggle.setText('▾ 🔓 ' + file.name);
-        };
+      const files = this.app.vault.getFiles().filter(f => f.extension.toLowerCase() === 'kdbx');
+      document.querySelectorAll('.workspace-leaf-content[data-type="file-explorer"]').forEach(explorer => {
+        const root = explorer.querySelector('.nav-folder.mod-root > .nav-folder-children')
+          || explorer.querySelector('.nav-files-container > .tree-item-children')
+          || explorer.querySelector('.nav-files-container');
+        if (!root) return;
+        const existing = new Map<string, HTMLElement>();
+        root.querySelectorAll(':scope > .gaspar-kdbx-root').forEach(el => {
+          existing.set((el as HTMLElement).dataset.kdbxPath || '', el as HTMLElement);
+        });
+        for (const file of files) {
+          if (existing.has(file.path)) { existing.delete(file.path); continue; }
+          const node = document.createElement('div');
+          node.className = 'tree-item nav-folder gaspar-kdbx-root';
+          node.dataset.kdbxPath = file.path;
+          const header = node.createDiv({ cls: 'tree-item-self nav-folder-title gaspar-kdbx-toggle' });
+          const arrow = header.createSpan({ cls: 'tree-item-icon', text: '▸' });
+          header.createSpan({ cls: 'tree-item-inner nav-folder-title-content', text: '🔒 ' + file.name });
+          const children = node.createDiv({ cls: 'tree-item-children nav-folder-children gaspar-kdbx-virtual' });
+          children.style.display = 'none';
+          header.onclick = async ev => {
+            ev.preventDefault(); ev.stopPropagation();
+            if (children.style.display !== 'none') {
+              children.style.display = 'none'; arrow.setText('▸'); return;
+            }
+            const db = await this.unlock(file);
+            if (!db) return;
+            children.empty();
+            this.renderGroup(children, db.getDefaultGroup(), file);
+            children.style.display = 'block';
+            arrow.setText('▾');
+            header.querySelector('.tree-item-inner')?.setText('🔓 ' + file.name);
+          };
+          root.appendChild(node);
+        }
+        for (const stale of existing.values()) stale.remove();
       });
     } finally { this.syncing = false; }
   }
