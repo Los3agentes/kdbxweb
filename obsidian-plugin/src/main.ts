@@ -6,7 +6,7 @@ KDBX.CryptoEngine.setArgon2Impl(async (password, salt, memory, iterations, lengt
   if (version !== 0x13) throw new Error('Unsupported Argon2 version');
   const fn = type === KDBX.CryptoEngine.Argon2TypeArgon2id ? argon2id : type === KDBX.CryptoEngine.Argon2TypeArgon2d ? argon2d : null;
   if (!fn) throw new Error('Unsupported Argon2 type');
-  const hex = await fn({ password: new Uint8Array(password), salt: new Uint8Array(salt), memorySize: Math.ceil(memory / 1024), iterations, parallelism, hashLength: length, outputType: 'hex' });
+  const hex = await fn({ password: new Uint8Array(password), salt: new Uint8Array(salt), memorySize: memory, iterations, parallelism, hashLength: length, outputType: 'hex' });
   return Uint8Array.from(hex.match(/.{2}/g)!.map(x => parseInt(x, 16))).buffer;
 });
 
