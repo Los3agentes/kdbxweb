@@ -26,16 +26,8 @@ function createDOMParser() {
     }
 
     const parserArg = {
-        errorHandler: {
-            warning: (e: Error) => {
-                throw e;
-            },
-            error: (e: Error) => {
-                throw e;
-            },
-            fatalError: (e: Error) => {
-                throw e;
-            }
+        onError: (level: string, message: string) => {
+            throw new Error(`${level}: ${message}`);
         }
     };
 
