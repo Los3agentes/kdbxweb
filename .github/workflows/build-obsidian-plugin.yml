@@ -33,7 +33,7 @@ jobs:
             --bundle --platform=node --format=cjs --target=es2022 \
             --external:obsidian --outfile=obsidian-plugin/dist/main.js \
             --log-level=info
-      - name: Regression test: encrypted KDBX unlock and XML parse
+      - name: 'Regression test - encrypted KDBX unlock and XML parse'
         run: node obsidian-plugin/tests/unlock-regression.cjs
       - name: Package Obsidian plugin
         run: |
