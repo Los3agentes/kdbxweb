@@ -1,4 +1,5 @@
 name: Build self-contained GASPAR KDBX Obsidian plugin
+# Manual build request 2026-11-11
 
 on:
   push:
