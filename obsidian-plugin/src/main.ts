@@ -53,14 +53,57 @@ class KdbxView extends ItemView {
     bar.createEl('button', { text: 'Open KDBX' }).onclick = () => this.choose();
     if (!this.db) { this.contentEl.createEl('p', { text: 'Locked. Password is not stored.' }); return; }
     bar.createEl('button', { text: 'Save' }).onclick = () => void this.save();
+    bar.createEl('button', { text: 'New group' }).onclick = () => {
+      const name = window.prompt('Group name');
+      if (!name?.trim()) return;
+      const parent = this.db.getDefaultGroup();
+      this.db.createGroup(parent, name.trim());
+      this.dirty = true; this.render();
+    };
+    bar.createEl('button', { text: 'New note' }).onclick = () => {
+      const title = window.prompt('Note title');
+      if (!title?.trim()) return;
+      const entry = this.db.createEntry(this.db.getDefaultGroup());
+      entry.fields.set('Title', title.trim());
+      entry.fields.set('GASPAR_MARKDOWN', '');
+      this.selected = entry; this.dirty = true; this.render();
+    };
+    if (this.selected) {
+      bar.createEl('button', { text: 'Rename note' }).onclick = () => {
+        const title = window.prompt('New title', String(this.selected.fields.get('Title') || 'Untitled'));
+        if (!title?.trim()) return;
+        this.selected.fields.set('Title', title.trim()); this.dirty = true; this.render();
+      };
+      bar.createEl('button', { text: 'Delete note' }).onclick = () => {
+        if (!window.confirm('Move this entry to the KDBX recycle bin?')) return;
+        this.db.remove(this.selected);
+        this.selected = null; this.dirty = true; this.render();
+      };
+    }
     bar.createEl('button', { text: 'Lock' }).onclick = async () => { await this.save(); if (!this.dirty) { this.db = null; this.file = null; this.render(); } };
     const tree = this.contentEl.createDiv({ cls: 'gaspar-tree' });
     const editor = this.contentEl.createDiv({ cls: 'gaspar-editor' });
+    let dragging: { entry: any; source: any } | null = null;
     const show = (g: any, depth: number) => {
       const group = tree.createDiv({ text: '📁 ' + g.name }); group.style.paddingLeft = depth * 14 + 'px';
+      group.ondragover = ev => { if (dragging) ev.preventDefault(); };
+      group.ondrop = ev => {
+        if (!dragging) return;
+        ev.preventDefault();
+        const { entry, source } = dragging; dragging = null;
+        if (source === g) return;
+        this.db.move(entry, g);
+        this.dirty = true; this.render();
+      };
       for (const e of g.entries) {
         const item = tree.createDiv({ text: '📄 ' + String(e.fields.get('Title') || 'Untitled') });
         item.style.paddingLeft = (depth + 1) * 14 + 'px';
+        item.draggable = true;
+        item.ondragstart = ev => {
+          dragging = { entry: e, source: g };
+          ev.dataTransfer?.setData('text/plain', 'GASPAR_KDBX_INTERNAL');
+        };
+        item.ondragend = () => { dragging = null; };
         item.onclick = () => {
           this.selected = e; editor.empty();
           const area = editor.createEl('textarea'); area.value = String(e.fields.get('GASPAR_MARKDOWN') || '');
